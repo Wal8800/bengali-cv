@@ -10,7 +10,7 @@ seq = iaa.Sequential([
 
 
 class BengaliImageGenerator(Sequence):
-    def __init__(self, file_paths, root=None, vowel=None, consonant=None, batch_size=64, shuffle=False):
+    def __init__(self, file_paths, image_size, root=None, vowel=None, consonant=None, batch_size=64, shuffle=False):
         """Initialization
         :param file_paths: list of all 'label' ids to use in the generato
         """
@@ -20,6 +20,7 @@ class BengaliImageGenerator(Sequence):
         self.consonant = consonant
         self.shuffle = shuffle
         self.batch_size = batch_size
+        self.image_size = image_size
 
     def __len__(self):
         """Denotes the number of batches per epoch
@@ -42,7 +43,7 @@ class BengaliImageGenerator(Sequence):
 
             images.append(img)
 
-        result = np.array(images).reshape((-1, 128, 128, 1))
+        result = np.array(images).reshape((-1, self.image_size, self.image_size, 1))
 
         if self.root is None:
             return seq(images=result)
@@ -65,3 +66,14 @@ class BengaliImageGenerator(Sequence):
         self.file_paths = np.arange(len(self.file_paths))
         if self.shuff:
             np.random.shuffle(self.file_paths)
+
+    def get_all_images(self):
+        images = []
+        for p in self.file_paths:
+            img = cv2.imread(p)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            img = img / 255
+
+            images.append(img)
+
+        return np.array(images).reshape((-1, self.image_size, self.image_size, 1))

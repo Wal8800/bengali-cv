@@ -6,6 +6,13 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
+opencv-python = "*"
+tensorflow = "*"
+pandas = "*"
+scikit-learn = "*"
+tqdm = "*"
+matplotlib = "*"
+imgaug = "*"
 
 [requires]
 python_version = "3.7"

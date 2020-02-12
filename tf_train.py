@@ -1,11 +1,16 @@
 import gc
+from datetime import datetime
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import sklearn
 import tensorflow as tf
 from sklearn.model_selection import KFold
+from tensorflow.keras.callbacks import TensorBoard
+from tensorflow_core.python.keras.callbacks import ReduceLROnPlateau
 
-from tf_model import cnn_model
+from tf_model import kaggle_cnn_model
 from tf_train_util import BengaliImageGenerator
 
 
@@ -50,15 +55,23 @@ def train_tf():
     y_vowel = pd.get_dummies(train['vowel_diacritic']).values
     y_consonant = pd.get_dummies(train['consonant_diacritic']).values
 
+    # sample_index = np.random.choice(len(x), len(x) // 10)
+    # print(len(sample_index))
+    #
+    # x = x[sample_index]
+    # y_root = y_root[sample_index]
+    # y_vowel = y_vowel[sample_index]
+    # y_consonant = y_consonant[sample_index]
+
     del train
     gc.collect()
 
     # img_generator = BengaliImageGenerator(x, root=y_root, vowel=y_vowel, consonant=y_consonant)
     # test_train_generator(img_generator)
 
-    batch_size = 256
-
-    kfold = KFold(n_splits=5)
+    batch_size = 128
+    image_size = 128
+    kfold = KFold(n_splits=10)
     for train_idx, test_idx in kfold.split(x):
         x_train, x_test = x[train_idx], x[test_idx]
         y_train_root, y_test_root = y_root[train_idx], y_root[test_idx]
@@ -67,15 +80,65 @@ def train_tf():
 
         train_gen = BengaliImageGenerator(
             x_train,
+            image_size,
             root=y_train_root,
             vowel=y_train_vowel,
             consonant=y_train_consonant,
             batch_size=batch_size
         )
 
-        model = cnn_model(128)
+        test_gen = BengaliImageGenerator(
+            x_test,
+            image_size,
+            root=y_test_root,
+            vowel=y_test_vowel,
+            consonant=y_test_consonant,
+            batch_size=batch_size
+        )
+
+        lr_reduction_root = ReduceLROnPlateau(monitor='root_accuracy', patience=3, verbose=1, factor=0.5,
+                                              min_lr=0.00001)
+        lr_reduction_vowel = ReduceLROnPlateau(monitor='vowel_accuracy', patience=3, verbose=1, factor=0.5,
+                                               min_lr=0.00001)
+        lr_reduction_consonant = ReduceLROnPlateau(monitor='consonant_accuracy', patience=3, verbose=1, factor=0.5,
+                                                   min_lr=0.00001)
+
+        logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        tensorboard_callback = TensorBoard(log_dir=logdir)
+
+        model = kaggle_cnn_model(image_size)
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-        model.fit(train_gen, epochs=1, steps_per_epoch=x_train.shape[0])
+
+        callbacks = [
+            lr_reduction_consonant,
+            lr_reduction_root,
+            lr_reduction_vowel,
+            tensorboard_callback
+        ]
+
+        all_test_images = test_gen.get_all_images()
+        validation_data = (all_test_images, [y_test_root, y_test_vowel, y_test_consonant])
+        model.fit(train_gen, epochs=30, callbacks=callbacks, validation_data=validation_data)
+
+        prediction = model.predict(test_gen)
+        scores = []
+        for x in prediction:
+            print(x.shape)
+
+        root_prediction = np.argmax(prediction[0], axis=1)
+        root_truth = np.argmax(y_test_root, axis=1)
+        scores.append(sklearn.metrics.recall_score(root_prediction, root_truth, average='macro'))
+
+        vowel_pred = np.argmax(prediction[1], axis=1)
+        vowel_truth = np.argmax(y_test_vowel, axis=1)
+        scores.append(sklearn.metrics.recall_score(vowel_pred, vowel_truth, average='macro'))
+
+        con_pred = np.argmax(prediction[2], axis=1)
+        con_truth = np.argmax(y_test_consonant, axis=1)
+        scores.append(sklearn.metrics.recall_score(con_pred, con_truth, average='macro'))
+
+        print(np.average(scores, weights=[2, 1, 1]))
+        break
 
 
 if __name__ == "__main__":
