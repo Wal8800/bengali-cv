@@ -2,3 +2,6 @@ data/
 .idea
 __pycache__
 /logs/
+/model/
+/prediction/submission.csv
+/inputs/

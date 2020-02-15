@@ -7,10 +7,10 @@ import pandas as pd
 import sklearn
 import tensorflow as tf
 from sklearn.model_selection import KFold
-from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from tensorflow_core.python.keras.callbacks import ReduceLROnPlateau
 
-from tf_model import kaggle_cnn_model
+from tf_model import *
 from tf_train_util import BengaliImageGenerator
 
 
@@ -70,7 +70,7 @@ def train_tf():
     # test_train_generator(img_generator)
 
     batch_size = 128
-    image_size = 128
+    image_size = 64
     kfold = KFold(n_splits=10)
     for train_idx, test_idx in kfold.split(x):
         x_train, x_test = x[train_idx], x[test_idx]
@@ -96,24 +96,18 @@ def train_tf():
             batch_size=batch_size
         )
 
-        lr_reduction_root = ReduceLROnPlateau(monitor='root_accuracy', patience=3, verbose=1, factor=0.5,
-                                              min_lr=0.00001)
-        lr_reduction_vowel = ReduceLROnPlateau(monitor='vowel_accuracy', patience=3, verbose=1, factor=0.5,
-                                               min_lr=0.00001)
-        lr_reduction_consonant = ReduceLROnPlateau(monitor='consonant_accuracy', patience=3, verbose=1, factor=0.5,
-                                                   min_lr=0.00001)
-
         logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-        tensorboard_callback = TensorBoard(log_dir=logdir)
 
-        model = kaggle_cnn_model(image_size)
+        model = dense_net_101_model(image_size)
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
         callbacks = [
-            lr_reduction_consonant,
-            lr_reduction_root,
-            lr_reduction_vowel,
-            tensorboard_callback
+            ReduceLROnPlateau(monitor='consonant_accuracy', patience=3, verbose=1, factor=0.5, min_lr=0.00001),
+            ReduceLROnPlateau(monitor='root_accuracy', patience=3, verbose=1, factor=0.5, min_lr=0.00001),
+            ReduceLROnPlateau(monitor='vowel_accuracy', patience=3, verbose=1, factor=0.5, min_lr=0.00001),
+            TensorBoard(log_dir=logdir),
+            ModelCheckpoint("model/tf_model.h5", monitor='val_root_accuracy', verbose=1, save_best_only=True,
+                            mode='max')
         ]
 
         all_test_images = test_gen.get_all_images()

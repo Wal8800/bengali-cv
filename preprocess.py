@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 HEIGHT = 137
 WIDTH = 236
-SIZE = 128
+SIZE = 64
 
 
 # Taken: https://www.kaggle.com/iafoss/image-preprocessing-128x128
@@ -18,6 +18,7 @@ def bbox(img):
     return rmin, rmax, cmin, cmax
 
 
+# Taken: https://www.kaggle.com/iafoss/image-preprocessing-128x128
 def crop_resize(img0, size=SIZE, pad=16):
     # crop a box around pixels large than the threshold
     # some images contain line at the sides
@@ -58,6 +59,7 @@ def process_and_output():
             cv2.imwrite(f"data/image/{name}.png", img)
 
 
+# https://www.kaggle.com/c/bengaliai-cv19/overview/evaluation
 def score_func(solution, submission):
     scores = []
     for component in ['grapheme_root', 'consonant_diacritic', 'vowel_diacritic']:

@@ -1,5 +1,7 @@
+from tensorflow.keras.applications.densenet import DenseNet121
 from tensorflow.keras.layers import Input, Conv2D, MaxPool2D, Dropout, Flatten, Dense, BatchNormalization
 from tensorflow.keras.models import Model
+from tensorflow_core.python.keras.layers import GlobalAveragePooling2D
 
 
 def cnn_model(size) -> Model:
@@ -27,6 +29,29 @@ def cnn_model(size) -> Model:
     return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
 
 
+def dense_net_101_model(size) -> Model:
+    input_shape = (size, size, 1)
+    inputs = Input(shape=input_shape)
+
+    base_model = DenseNet121(
+        include_top=False,
+        weights=None,
+        input_tensor=inputs,
+        input_shape=input_shape
+    )
+
+    x = GlobalAveragePooling2D()(base_model.output)
+    x = Dense(512, activation='relu')(x)
+    x = BatchNormalization()(x)
+
+    head_root = Dense(168, activation='softmax', name='root')(x)
+    head_vowel = Dense(11, activation='softmax', name='vowel')(x)
+    head_consonant = Dense(7, activation='softmax', name='consonant')(x)
+
+    return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
+
+
+# https://www.kaggle.com/kaushal2896/bengali-graphemes-starter-eda-multi-output-cnn#Basic-Model
 def kaggle_cnn_model(size) -> Model:
     inputs = Input(shape=(size, size, 1))
 
@@ -83,5 +108,5 @@ def kaggle_cnn_model(size) -> Model:
 
 
 if __name__ == "__main__":
-    simple_model = kaggle_cnn_model(128)
-    simple_model.summary()
+    example_model = dense_net_101_model(64)
+    example_model.summary()
