@@ -1,14 +1,16 @@
 import gc
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.utils import Sequence
 
 HEIGHT = 137
 WIDTH = 236
-SIZE = 64
+SIZE = 128
 
 
 # Taken: https://www.kaggle.com/iafoss/image-preprocessing-128x128
@@ -43,6 +45,42 @@ def crop_resize(img0, size=SIZE, pad=16):
 is_kaggle = False
 
 
+def test_predict_image(test_image_list):
+    n_imgs = len(test_image_list)
+    fig, axs = plt.subplots(n_imgs, 1, figsize=(10, 5 * n_imgs))
+    for i in range(n_imgs):
+        img = test_image_list[i]
+        if i == 0:
+            print(img)
+            print(np.max(img), np.min(img))
+        axs[i].imshow(img.reshape(64, 64))
+        axs[i].set_title('Original image')
+        axs[i].axis('off')
+
+    plt.show()
+
+
+class TestImageGenerator(Sequence):
+    def __init__(self, file_paths, image_size, batch_size=128):
+        self.file_paths = file_paths
+        self.batch_size = batch_size
+        self.image_size = image_size
+
+    def __len__(self):
+        return int(np.ceil(len(self.file_paths) / float(self.batch_size)))
+
+    def __getitem__(self, idx):
+        x_batch = self.file_paths[idx * self.batch_size:(idx + 1) * self.batch_size]
+        images = []
+        for p in x_batch:
+            img = cv2.imread(p)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            img = img / 255
+            images.append(img)
+
+        return np.array(images).reshape((-1, self.image_size, self.image_size, 1))
+
+
 def predict():
     if not is_kaggle:
         # need to set this to train in rtx gpu
@@ -59,7 +97,7 @@ def predict():
                 print(e)
 
     model_dir = "../input/bengalicvmodel" if is_kaggle else "../model"
-    model: Model = load_model(f"{model_dir}/tf_model.h5")
+    model: Model = load_model(f"{model_dir}/tf_model_imgaug_128.h5")
 
     tests = [
         "../input/bengaliai-cv19/test_image_data_0.parquet",
@@ -81,27 +119,33 @@ def predict():
         df = pd.read_parquet(file_path)
         data = 255 - df.iloc[:, 1:].values.reshape(-1, HEIGHT, WIDTH).astype(np.uint8)
 
-        test_image_list = []
-        for idx in range(len(df)):
-            # normalize each image by its max val
-            img = (data[idx] * (255.0 / data[idx].max())).astype(np.uint8)
-            img = crop_resize(img)
+        idx_batch = np.array_split(np.arange(len(df)), 5)
+        for batch in idx_batch:
+            test_image_list = []
+            if len(batch) == 0:
+                continue
 
-            # img = cv2.imencode('.png', img)[1]
-            test_image_list.append(img)
+            for idx in batch:
+                # normalize each image by its max val
+                img = (data[idx] * (255.0 / data[idx].max())).astype(np.uint8)
+                img = crop_resize(img)
+                img = img / 255
 
-        test_images = np.array(test_image_list).reshape((-1, SIZE, SIZE, 1))
-        preds = model.predict(test_images)
+                # img = cv2.imencode('.png', img)[1]
+                test_image_list.append(img)
 
-        for i, p in enumerate(preds_dict):
-            preds_dict[p] = np.argmax(preds[i], axis=1)
+            test_images = np.array(test_image_list).reshape((-1, SIZE, SIZE, 1))
+            preds = model.predict(test_images)
 
-        for idx in range(len(df)):
-            name = df.iloc[idx, 0]
-            for comp_name, comp_preds in preds_dict.items():
-                row_id.append(f"{name}_{comp_name}")
-                target.append(comp_preds[idx])
-        gc.collect()
+            for i, p in enumerate(preds_dict):
+                preds_dict[p] = np.argmax(preds[i], axis=1)
+
+            for i, idx in enumerate(batch):
+                name = df.iloc[idx, 0]
+                for comp_name, comp_preds in preds_dict.items():
+                    row_id.append(f"{name}_{comp_name}")
+                    target.append(comp_preds[i])
+            gc.collect()
 
     df_sample = pd.DataFrame(
         {

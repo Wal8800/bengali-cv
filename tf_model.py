@@ -41,7 +41,11 @@ def dense_net_101_model(size) -> Model:
     )
 
     x = GlobalAveragePooling2D()(base_model.output)
+    x = Dense(1024, activation='relu')(x)
+    x = Dropout(rate=0.3)(x)
     x = Dense(512, activation='relu')(x)
+    x = Dropout(rate=0.3)(x)
+    x = Dense(256, activation='relu')(x)
     x = BatchNormalization()(x)
 
     head_root = Dense(168, activation='softmax', name='root')(x)

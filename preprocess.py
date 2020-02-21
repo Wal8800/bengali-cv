@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 HEIGHT = 137
 WIDTH = 236
-SIZE = 64
+SIZE = 128
 
 
 # Taken: https://www.kaggle.com/iafoss/image-preprocessing-128x128
@@ -56,7 +56,7 @@ def process_and_output():
             img = crop_resize(img)
 
             # img = cv2.imencode('.png', img)[1]
-            cv2.imwrite(f"data/image/{name}.png", img)
+            cv2.imwrite(f"data/image_128/{name}.png", img)
 
 
 # https://www.kaggle.com/c/bengaliai-cv19/overview/evaluation
