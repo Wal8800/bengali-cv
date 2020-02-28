@@ -1,21 +1,40 @@
 from collections import Counter
 from datetime import datetime
 
-import numpy as np
-import pandas as pd
 import sklearn
 import tensorflow as tf
 from sklearn.metrics import classification_report
 from sklearn.model_selection import KFold, StratifiedKFold
 from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.optimizers import Adam
 from tensorflow_core.python.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint
 
-import augmentations
 from tf_model import *
-from tf_train_util import BengaliImageGenerator
+from tf_train_util import *
 
 
-def train_tf(image_size=64, batch_size=128):
+class OnEpochEnd(tf.keras.callbacks.Callback):
+    def __init__(self, generator: Sequence):
+        super().__init__()
+        self.generator = generator
+
+    def on_epoch_end(self, epoch, logs=None):
+        # val_root_accuracy = logs["val_root_accuracy"]
+        # if val_root_accuracy > 0.9:
+        #     self.generator.aug_prob = 1.0
+        # elif val_root_accuracy > 0.8:
+        #     self.generator.aug_prob = 0.9
+        # elif val_root_accuracy > 0.7:
+        #     self.generator.aug_prob = 0.8
+        # elif val_root_accuracy > 0.6:
+        #     self.generator.aug_prob = 0.7
+        # elif val_root_accuracy > 0.5:
+        #     self.generator.aug_prob = 0.6
+
+        self.generator.on_epoch_end()
+
+
+def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30):
     augmentations.IMAGE_SIZE = image_size
     # need to set this to train in rtx gpu
     gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -56,7 +75,7 @@ def train_tf(image_size=64, batch_size=128):
     # test_train_generator(img_generator)
 
     kfold = KFold(n_splits=10)
-    skf = StratifiedKFold(n_splits=8, shuffle=True)
+    skf = StratifiedKFold(n_splits=5, shuffle=True)
     for train_idx, test_idx in skf.split(x, train['grapheme_root'].values):
         x_train, x_test = x[train_idx], x[test_idx]
         y_train_root, y_test_root = y_root[train_idx], y_root[test_idx]
@@ -87,7 +106,7 @@ def train_tf(image_size=64, batch_size=128):
         con_test_percentage = [(i, c[i] / len(con_truth) * 100.0) for i, count in c.most_common()]
         print(f"test con percentage: {con_test_percentage}")
 
-        train_gen = BengaliImageGenerator(
+        train_gen = BengaliImageMixUpGenerator(
             x_train,
             image_size,
             root=y_train_root,
@@ -102,29 +121,37 @@ def train_tf(image_size=64, batch_size=128):
             root=y_test_root,
             vowel=y_test_vowel,
             consonant=y_test_consonant,
-            batch_size=batch_size
+            batch_size=batch_size,
+            augment=False
         )
 
-        logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S") + f"_{image_size}"
+        logdir = f"logs/scalars/{image_size}/mixup_gridmask/" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        model = dense_net_101_model(image_size)
-        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        model = dense_net_121_model(image_size)
+        optimizer = Adam(learning_rate=lr)
+        model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
         callbacks = [
-            ReduceLROnPlateau(monitor='val_consonant_accuracy', patience=3, verbose=1, factor=0.5, min_lr=0.00001),
-            ReduceLROnPlateau(monitor='val_root_accuracy', patience=3, verbose=1, factor=0.5, min_lr=0.00001),
-            ReduceLROnPlateau(monitor='val_vowel_accuracy', patience=3, verbose=1, factor=0.5, min_lr=0.00001),
+            ReduceLROnPlateau(monitor='val_consonant_accuracy', patience=3, verbose=1, factor=0.7, min_lr=min_lr),
+            ReduceLROnPlateau(monitor='val_root_accuracy', patience=3, verbose=1, factor=0.7, min_lr=min_lr),
+            ReduceLROnPlateau(monitor='val_vowel_accuracy', patience=3, verbose=1, factor=0.7, min_lr=min_lr),
+            OnEpochEnd(train_gen),
             TensorBoard(log_dir=logdir),
-            ModelCheckpoint(f"model/tf_model_imgaug_{image_size}.h5", monitor='val_root_accuracy', verbose=1,
+            ModelCheckpoint(f"model/tf_model_imgaug_{image_size}_mixup_gridmask.h5", monitor='val_root_accuracy',
+                            verbose=1,
                             save_best_only=True,
                             mode='max')
         ]
 
-        all_test_images = test_gen.get_all_images()
-        validation_data = (all_test_images, [y_test_root, y_test_vowel, y_test_consonant])
-        model.fit(train_gen, epochs=30, callbacks=callbacks, validation_data=validation_data)
+        # {'loss': 3.230544132721944, 'root_loss': 2.2817774, 'vowel_loss': 0.5255275, 'consonant_loss': 0.42362353,
+        #  'root_accuracy': 0.38500798, 'vowel_accuracy': 0.82589376, 'consonant_accuracy': 0.8602432,
+        #  'val_loss': 1.568948200933493, 'val_root_loss': 1.1511563, 'val_vowel_loss': 0.21462844,
+        #  'val_consonant_loss': 0.20316331, 'val_root_accuracy': 0.6505925, 'val_vowel_accuracy': 0.9300189,
+        #  'val_consonant_accuracy': 0.9365664}
 
-        prediction = model.predict(all_test_images)
+        model.fit(train_gen, epochs=epoch, callbacks=callbacks, validation_data=test_gen)
+
+        prediction = model.predict(test_gen)
         scores = []
         for x in prediction:
             print(x.shape)
@@ -143,4 +170,4 @@ def train_tf(image_size=64, batch_size=128):
 
 
 if __name__ == "__main__":
-    train_tf(image_size=128, batch_size=64)
+    train_tf(image_size=128, batch_size=128, lr=0.001, epoch=50, min_lr=0.000001)

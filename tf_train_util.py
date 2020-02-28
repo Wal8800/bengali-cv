@@ -9,6 +9,7 @@ from PIL import Image
 from tensorflow.keras.utils import Sequence
 
 import augmentations
+from grid_mask import grid_mask
 from random_eraser import get_random_eraser
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -77,7 +78,7 @@ def augment_and_mix(image, severity=3, width=3, depth=-1, alpha=1.):
         image_aug = image.copy()
         depth = depth if depth > 0 else np.random.randint(1, 4)
         for _ in range(depth):
-            op = np.random.choice(augmentations.augmentations)
+            op = np.random.choice(augmentations.augmentations_subset)
             image_aug = apply_op(image_aug, op, severity)
         # Preprocessing commutes since all coefficients are convex
         temp = ws[i] * image_aug
@@ -87,8 +88,9 @@ def augment_and_mix(image, severity=3, width=3, depth=-1, alpha=1.):
     return mixed
 
 
-class BengaliImageGenerator(Sequence):
-    def __init__(self, file_paths, image_size, root=None, vowel=None, consonant=None, batch_size=64, shuffle=False):
+class BengaliImageMixUpGenerator(Sequence):
+    def __init__(self, file_paths, image_size, root=None, vowel=None, consonant=None, batch_size=64, shuffle=False,
+                 augment=True):
         """Initialization
         :param file_paths: list of all 'label' ids to use in the generato
         """
@@ -99,6 +101,107 @@ class BengaliImageGenerator(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self.image_size = image_size
+        self.alpha = 0.2
+
+    def __len__(self):
+        """Denotes the number of batches per epoch
+        :return: number of batches per epoch
+        """
+        return int(np.ceil(len(self.file_paths) / float(self.batch_size)))
+
+    def __getitem__(self, index):
+        """Generate one batch of data
+        :param index: index of the batch
+        :return: X and y when fitting. X only when predicting
+        """
+
+        x_batch = self.file_paths[index * self.batch_size:(index + 1) * self.batch_size]
+
+        random_index = np.random.choice(len(self.file_paths), len(x_batch))
+        x_batch_2 = self.file_paths[random_index]
+        images = []
+        for p in x_batch:
+            img = cv2.imread(p)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            img = img / 255
+
+            images.append(img)
+
+        images = np.array(images).reshape((-1, self.image_size, self.image_size, 1))
+
+        images_2 = []
+        for p in x_batch_2:
+            img = cv2.imread(p)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            img = img / 255
+
+            images_2.append(img)
+
+        images_2 = np.array(images_2).reshape((-1, self.image_size, self.image_size, 1))
+
+        lam = np.random.beta(self.alpha, self.alpha, len(x_batch))
+
+        x_l = lam.reshape(len(x_batch), 1, 1, 1)
+        y_l = lam.reshape(len(x_batch), 1)
+
+        result_images = images * x_l + images_2 * (1 - x_l)
+        for i, x in enumerate(result_images):
+            img = result_images[i]
+            img = img.reshape((self.image_size, self.image_size))
+
+            # img = augment_and_mix(img, depth=1)
+            img = grid_mask(img, 30, 75, ratio=0.5, rotate=np.random.randint(1, 360))
+            img = img.reshape((self.image_size, self.image_size, 1))
+            result_images[i] = img
+
+        if self.root is None:
+            return result_images
+
+        root_batch = self.root[index * self.batch_size:(index + 1) * self.batch_size]
+        root_batch_2 = self.root[random_index]
+        result_root_batch = root_batch * y_l + root_batch_2 * (1 - y_l)
+
+        vowel_batch = self.vowel[index * self.batch_size:(index + 1) * self.batch_size]
+        vowel_batch_2 = self.vowel[random_index]
+        result_vowel_batch = vowel_batch * y_l + vowel_batch_2 * (1 - y_l)
+
+        consonant_batch = self.consonant[index * self.batch_size:(index + 1) * self.batch_size]
+        consonant_batch_2 = self.consonant[random_index]
+        result_con_batch = consonant_batch * y_l + consonant_batch_2 * (1 - y_l)
+
+        y_dict = {
+            'root': result_root_batch,
+            'vowel': result_vowel_batch,
+            'consonant': result_con_batch
+        }
+
+        return result_images, y_dict
+
+    def on_epoch_end(self):
+        """Updates indexes after each epoch
+        """
+        p = np.random.permutation(len(self.file_paths))
+
+        self.file_paths = self.file_paths[p]
+        self.root = self.root[p]
+        self.vowel = self.vowel[p]
+        self.consonant = self.consonant[p]
+
+
+class BengaliImageGenerator(Sequence):
+    def __init__(self, file_paths, image_size, root=None, vowel=None, consonant=None, batch_size=64, shuffle=False,
+                 augment=True):
+        """Initialization
+        :param file_paths: list of all 'label' ids to use in the generato
+        """
+        self.file_paths = file_paths
+        self.root = root
+        self.vowel = vowel
+        self.consonant = consonant
+        self.shuffle = shuffle
+        self.batch_size = batch_size
+        self.image_size = image_size
+        self.augment = augment
 
     def __len__(self):
         """Denotes the number of batches per epoch
@@ -119,14 +222,20 @@ class BengaliImageGenerator(Sequence):
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             img = img / 255
 
-            img = augment_and_mix(img)
-            img = eraser(img.reshape((self.image_size, self.image_size, 1)))
+            if self.augment:
+                img = augment_and_mix(img, severity=4)
+
+                # if random.uniform(0, 1) < 0.5:
+                #     img = eraser(img.reshape((self.image_size, self.image_size, 1)))
+                #     img = img.reshape((self.image_size, self.image_size))
+                # else:
+                img = grid_mask(img, 24, 56, ratio=0.6, rotate=90)
             images.append(img)
 
-            result = np.array(images).reshape((-1, self.image_size, self.image_size, 1))
-            # result = seq(images=result)
-            if self.root is None:
-                return result
+        result = np.array(images).reshape((-1, self.image_size, self.image_size, 1))
+        # result = seq(images=result)
+        if self.root is None:
+            return result
 
         root_batch = self.root[index * self.batch_size:(index + 1) * self.batch_size]
         vowel_batch = self.vowel[index * self.batch_size:(index + 1) * self.batch_size]
@@ -143,23 +252,40 @@ class BengaliImageGenerator(Sequence):
     def on_epoch_end(self):
         """Updates indexes after each epoch
         """
-        self.file_paths = np.arange(len(self.file_paths))
-        if self.shuffle:
-            np.random.shuffle(self.file_paths)
+        p = np.random.permutation(len(self.file_paths))
 
-    def get_all_images(self):
-        images = []
-        for p in self.file_paths:
-            img = cv2.imread(p)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            img = img / 255
-
-            images.append(img)
-
-        return np.array(images).reshape((-1, self.image_size, self.image_size, 1))
+        self.file_paths = self.file_paths[p]
+        self.root = self.root[p]
+        self.vowel = self.vowel[p]
+        self.consonant = self.consonant[p]
 
 
-def test_train_generator(gen: BengaliImageGenerator):
+def test_train_generatorby_class(gen: Sequence, root_class: int):
+    n_imgs = 6
+    fig, axs = plt.subplots(n_imgs, 1, figsize=(10, 5 * n_imgs))
+    i = 0
+    for k in range(len(gen)):
+        data_x, y = gen[k]
+
+        for j in range(len(data_x)):
+            if root_class not in np.nonzero(y['root'][j])[0]:
+                continue
+
+            img = data_x[j]
+            axs[i].imshow(img.reshape(gen.image_size, gen.image_size))
+            axs[i].set_title('Original image')
+            axs[i].axis('off')
+            i += 1
+            if i >= n_imgs:
+                break
+
+        if i >= n_imgs:
+            break
+
+    plt.show()
+
+
+def test_train_generator(gen: Sequence):
     n_imgs = 6
     print(np.random.choice(len(gen), 1)[0])
     data_x, y = gen[np.random.choice(len(gen), 1)[0]]
@@ -168,21 +294,29 @@ def test_train_generator(gen: BengaliImageGenerator):
     print(y["root"].shape)
     print(y["vowel"].shape)
     print(y["consonant"].shape)
-    for i in range(n_imgs):
-        img = data_x[i]
+    i = 0
+    for j in range(len(data_x)):
+        if i >= n_imgs:
+            break
+
+        img = data_x[j]
+        print(np.nonzero(y['root'][j]), np.nonzero(y['vowel'][j]), np.nonzero(y['consonant'][j]))
         if i == 0:
             # print(img)
             print(np.max(img), np.min(img))
         axs[i].imshow(img.reshape(gen.image_size, gen.image_size))
         axs[i].set_title('Original image')
         axs[i].axis('off')
+        i += 1
 
     plt.show()
 
 
 if __name__ == "__main__":
+    image_size = 128
+    augmentations.IMAGE_SIZE = image_size
     train = pd.read_csv("data/train.csv")
-    train["image_path"] = train["image_id"].apply(lambda x: f"data/image_128/{x}.png")
+    train["image_path"] = train["image_id"].apply(lambda x: f"data/image_{image_size}_plain/{x}.png")
     train.drop(["grapheme", "image_id"], axis=1, inplace=True)
 
     x = train["image_path"].values
@@ -190,5 +324,6 @@ if __name__ == "__main__":
     y_vowel = pd.get_dummies(train['vowel_diacritic']).values
     y_consonant = pd.get_dummies(train['consonant_diacritic']).values
 
-    img_generator = BengaliImageGenerator(x, 128, root=y_root, vowel=y_vowel, consonant=y_consonant)
-    test_train_generator(img_generator)
+    img_generator = BengaliImageMixUpGenerator(x, image_size, root=y_root, vowel=y_vowel, consonant=y_consonant,
+                                               augment=True)
+    test_train_generatorby_class(img_generator, 61)

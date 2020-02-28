@@ -1,4 +1,4 @@
-from tensorflow.keras.applications.densenet import DenseNet121
+from tensorflow.keras.applications.densenet import DenseNet121, DenseNet169
 from tensorflow.keras.layers import Input, Conv2D, MaxPool2D, Dropout, Flatten, Dense, BatchNormalization
 from tensorflow.keras.models import Model
 from tensorflow_core.python.keras.layers import GlobalAveragePooling2D
@@ -29,7 +29,7 @@ def cnn_model(size) -> Model:
     return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
 
 
-def dense_net_101_model(size) -> Model:
+def dense_net_121_model(size) -> Model:
     input_shape = (size, size, 1)
     inputs = Input(shape=input_shape)
 
@@ -41,6 +41,36 @@ def dense_net_101_model(size) -> Model:
     )
 
     x = GlobalAveragePooling2D()(base_model.output)
+    x = Dense(1024, activation='relu')(x)
+    x = Dropout(rate=0.3)(x)
+    x = Dense(1024, activation='relu')(x)
+    x = Dropout(rate=0.3)(x)
+    x = Dense(1024, activation='relu')(x)
+    x = Dropout(rate=0.3)(x)
+    # x = Dense(256, activation='relu')(x)
+    # x = BatchNormalization()(x)
+
+    head_root = Dense(168, activation='softmax', name='root')(x)
+    head_vowel = Dense(11, activation='softmax', name='vowel')(x)
+    head_consonant = Dense(7, activation='softmax', name='consonant')(x)
+
+    return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
+
+
+def dense_net_169_model(size) -> Model:
+    input_shape = (size, size, 1)
+    inputs = Input(shape=input_shape)
+
+    base_model = DenseNet169(
+        include_top=False,
+        weights=None,
+        input_tensor=inputs,
+        input_shape=input_shape
+    )
+
+    x = GlobalAveragePooling2D()(base_model.output)
+    # x = Dense(2048, activation='relu')(x)
+    # x = Dropout(rate=0.3)(x)
     x = Dense(1024, activation='relu')(x)
     x = Dropout(rate=0.3)(x)
     x = Dense(512, activation='relu')(x)
@@ -112,5 +142,5 @@ def kaggle_cnn_model(size) -> Model:
 
 
 if __name__ == "__main__":
-    example_model = dense_net_101_model(64)
+    example_model = dense_net_121_model(128)
     example_model.summary()

@@ -53,10 +53,11 @@ def process_and_output():
             name = df.iloc[idx, 0]
             # normalize each image by its max val
             img = (data[idx] * (255.0 / data[idx].max())).astype(np.uint8)
-            img = crop_resize(img)
+            img = cv2.resize(img, (SIZE, SIZE))
+            # img = crop_resize(img)
 
             # img = cv2.imencode('.png', img)[1]
-            cv2.imwrite(f"data/image_128/{name}.png", img)
+            cv2.imwrite(f"data/image_128_plain/{name}.png", img)
 
 
 # https://www.kaggle.com/c/bengaliai-cv19/overview/evaluation
