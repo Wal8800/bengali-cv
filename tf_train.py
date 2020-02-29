@@ -132,9 +132,9 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30):
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
         callbacks = [
-            ReduceLROnPlateau(monitor='val_consonant_accuracy', patience=3, verbose=1, factor=0.7, min_lr=min_lr),
-            ReduceLROnPlateau(monitor='val_root_accuracy', patience=3, verbose=1, factor=0.7, min_lr=min_lr),
-            ReduceLROnPlateau(monitor='val_vowel_accuracy', patience=3, verbose=1, factor=0.7, min_lr=min_lr),
+            ReduceLROnPlateau(monitor='val_consonant_accuracy', patience=5, verbose=1, factor=0.7, min_lr=min_lr),
+            ReduceLROnPlateau(monitor='val_root_accuracy', patience=5, verbose=1, factor=0.7, min_lr=min_lr),
+            ReduceLROnPlateau(monitor='val_vowel_accuracy', patience=5, verbose=1, factor=0.7, min_lr=min_lr),
             OnEpochEnd(train_gen),
             TensorBoard(log_dir=logdir),
             ModelCheckpoint(f"model/tf_model_imgaug_{image_size}_mixup_gridmask.h5", monitor='val_root_accuracy',
@@ -142,12 +142,6 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30):
                             save_best_only=True,
                             mode='max')
         ]
-
-        # {'loss': 3.230544132721944, 'root_loss': 2.2817774, 'vowel_loss': 0.5255275, 'consonant_loss': 0.42362353,
-        #  'root_accuracy': 0.38500798, 'vowel_accuracy': 0.82589376, 'consonant_accuracy': 0.8602432,
-        #  'val_loss': 1.568948200933493, 'val_root_loss': 1.1511563, 'val_vowel_loss': 0.21462844,
-        #  'val_consonant_loss': 0.20316331, 'val_root_accuracy': 0.6505925, 'val_vowel_accuracy': 0.9300189,
-        #  'val_consonant_accuracy': 0.9365664}
 
         model.fit(train_gen, epochs=epoch, callbacks=callbacks, validation_data=test_gen)
 
