@@ -5,3 +5,5 @@ __pycache__
 /model/
 /prediction/submission.csv
 /inputs/
+/input/
+/train_result.csv
