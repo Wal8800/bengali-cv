@@ -2,9 +2,18 @@ import numpy as np
 
 
 # https://github.com/yu4u/cutout-random-erasing
+
 def get_random_eraser(p=0.5, s_l=0.02, s_h=0.4, r_1=0.3, r_2=1 / 0.3, v_l=0, v_h=255, pixel_level=False):
+    """
+    p : the probability that random erasing is performed
+    s_l, s_h : minimum / maximum proportion of erased area against input image
+    r_1, r_2 : minimum / maximum aspect ratio of erased area
+    v_l, v_h : minimum / maximum value for erased area
+    pixel_level : pixel-level randomization for erased area
+    """
+
     def eraser(input_img):
-        img_h, img_w, img_c = input_img.shape
+        img_h, img_w = input_img.shape
         p_1 = np.random.rand()
 
         if p_1 > p:
@@ -22,11 +31,11 @@ def get_random_eraser(p=0.5, s_l=0.02, s_h=0.4, r_1=0.3, r_2=1 / 0.3, v_l=0, v_h
                 break
 
         if pixel_level:
-            c = np.random.uniform(v_l, v_h, (h, w, img_c))
+            c = np.random.uniform(v_l, v_h, (h, w))
         else:
             c = np.random.uniform(v_l, v_h)
 
-        input_img[top:top + h, left:left + w, :] = c
+        input_img[top:top + h, left:left + w] = c
 
         return input_img
 

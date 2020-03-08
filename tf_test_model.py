@@ -20,8 +20,9 @@ def test_model():
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
+    image_size = 128
     train = pd.read_csv("data/train.csv")
-    train["image_path"] = train["image_id"].apply(lambda x: f"data/image/{x}.png")
+    train["image_path"] = train["image_id"].apply(lambda img_id: f"data/image_{image_size}/{img_id}.png")
     train.drop(["grapheme", "image_id"], axis=1, inplace=True)
 
     x = train["image_path"].values
@@ -29,32 +30,24 @@ def test_model():
     y_vowel = pd.get_dummies(train['vowel_diacritic']).values
     y_consonant = pd.get_dummies(train['consonant_diacritic']).values
 
-    sample_index = np.random.choice(len(x), len(x) // 10)
-    print(len(sample_index))
-
-    x = x[sample_index]
-    y_root = y_root[sample_index]
-    y_vowel = y_vowel[sample_index]
-    y_consonant = y_consonant[sample_index]
-
     train_gen = BengaliImageGenerator(
         x,
-        64,
+        image_size,
         root=y_root,
         vowel=y_vowel,
         consonant=y_consonant,
         batch_size=64
     )
 
-    model: Model = load_model("model/tf_model_aug_mix.h5")
-    pred = model.predict(train_gen.get_all_images())
+    model: Model = load_model("model/tf_model_64_mixup_gridmask_affine.h5")
+    pred = model.predict(train_gen)
 
     root_prediction = np.argmax(pred[0], axis=1)
     vowel_pred = np.argmax(pred[1], axis=1)
     con_pred = np.argmax(pred[2], axis=1)
 
-    print(classification_report(np.argmax(y_vowel, axis=1), vowel_pred))
-    print(confusion_matrix(np.argmax(y_vowel, axis=1), vowel_pred, normalize='true'))
+    print(classification_report(train['vowel_diacritic'].values, vowel_pred))
+    print(confusion_matrix(train['vowel_diacritic'].values, vowel_pred, normalize='true'))
 
 
 if __name__ == "__main__":

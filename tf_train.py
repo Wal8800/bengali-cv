@@ -1,18 +1,23 @@
+import json
 from collections import Counter
+from csv import DictWriter
 from datetime import datetime
 
-import tensorflow as tf
 from sklearn.metrics import classification_report, recall_score
 from sklearn.model_selection import StratifiedKFold
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.optimizers import Adam
 from tensorflow_core.python.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint
 
+from random_eraser import get_random_eraser
 from tf_model import *
 from tf_train_util import *
 
 GRID_MASK = "gridmask"
 MIXUP = "mixup"
+RANDOM_CUTOUT = "randomcutout"
+AUGMIX = "augmix"
+AFFINE = "affine"
 
 
 class OnEpochEnd(tf.keras.callbacks.Callback):
@@ -25,11 +30,8 @@ class OnEpochEnd(tf.keras.callbacks.Callback):
 
 
 def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, logging=True, save_model=True,
-             save_result_to_csv=True, lr_reduce_patience=5, lr_reduce_factor=0.7, n_fold=5, aug_config=None):
-    if aug_config is None:
-        aug_config = dict()
-    augmentations.IMAGE_SIZE = image_size
-    # need to set this to train in rtx gpu
+             save_result_to_csv=True, lr_reduce_patience=5, lr_reduce_factor=0.7, n_fold=5, aug_config=None,
+             create_model=dense_net_121_model):
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         try:
@@ -41,6 +43,13 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
         except RuntimeError as e:
             # Memory growth must be set before GPUs have been initialized
             print(e)
+    else:
+        raise NotImplementedError("can't train with gpu")
+
+    if aug_config is None:
+        aug_config = dict()
+    augmentations.IMAGE_SIZE = image_size
+    # need to set this to train in rtx gpu
 
     train = pd.read_csv("data/train.csv")
     train["image_path"] = train["image_id"].apply(lambda x: f"data/image_{image_size}/{x}.png")
@@ -58,8 +67,32 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
     )
 
     transformers = []
+
+    if AFFINE in aug_config:
+        seq_augmenter = iaa.Sequential([
+            iaa.Sometimes(1.0, iaa.Affine(**aug_config[AFFINE])),
+        ])
+        transformers.append(lambda img: seq_augmenter.augment_image(img))
     if GRID_MASK in aug_config:
         transformers.append(lambda img: grid_mask(img, **aug_config[GRID_MASK]))
+
+    if RANDOM_CUTOUT in aug_config:
+        transformers.append(lambda img: get_random_eraser(**aug_config[RANDOM_CUTOUT])(img))
+
+    if AUGMIX in aug_config:
+        transformers.append(lambda img: augmentations.augment_and_mix(img, **aug_config[AUGMIX]))
+
+    """
+        32, 0.79
+        60, 0.58
+        61, 0.68
+        62, 0.73
+        84, 0.80
+        37, 0.86
+        45, 0.86
+        110, 0.87
+        122, 0.85
+    """
 
     skf = StratifiedKFold(n_splits=n_fold, shuffle=True)
     for train_idx, test_idx in skf.split(x, train['grapheme_root'].values):
@@ -113,16 +146,12 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
             batch_size=batch_size
         )
 
-        model = dense_net_121_model(image_size)
+        model = create_model(image_size)
         optimizer = Adam(learning_rate=lr)
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
         callbacks = [
-            ReduceLROnPlateau(monitor='val_consonant_accuracy', patience=lr_reduce_patience, verbose=1,
-                              factor=lr_reduce_factor, min_lr=min_lr),
             ReduceLROnPlateau(monitor='val_root_accuracy', patience=lr_reduce_patience, verbose=1,
-                              factor=lr_reduce_factor, min_lr=min_lr),
-            ReduceLROnPlateau(monitor='val_vowel_accuracy', patience=lr_reduce_patience, verbose=1,
                               factor=lr_reduce_factor, min_lr=min_lr),
             OnEpochEnd(train_gen),
         ]
@@ -133,15 +162,17 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
             aug_keys.append("base")
 
         if logging:
-            logdir = f"logs/scalars/{image_size}/{'_'.join(aug_keys)}/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+            current_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            logdir = f"logs/scalars/{image_size}/{create_model.__name__}/{'_'.join(aug_keys)}/{current_timestamp}"
             callbacks.append(TensorBoard(log_dir=logdir))
 
         if save_model:
-            callbacks.append(ModelCheckpoint(f"model/tf_model_imgaug_{image_size}_{'_'.join(aug_keys)}.h5",
-                                             monitor='val_root_accuracy',
-                                             verbose=1,
-                                             save_best_only=True,
-                                             mode='max'))
+            callbacks.append(
+                ModelCheckpoint(f"model/{create_model.__name__}/tf_model_{image_size}_{'_'.join(aug_keys)}.h5",
+                                monitor='val_root_accuracy',
+                                verbose=1,
+                                save_best_only=True,
+                                mode='max'))
 
         model.fit(train_gen, epochs=epoch, callbacks=callbacks, validation_data=test_gen)
 
@@ -163,12 +194,13 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
 
         if save_result_to_csv:
             info = {
+                "model": create_model.__name__,
                 "image_size": image_size,
                 "batch_size": batch_size,
                 "starting_lr": lr,
                 "epoch": epoch,
                 "lr_reduce_patience": lr_reduce_patience,
-                "lr)reduce_factor": lr_reduce_factor,
+                "lr_reduce_factor": lr_reduce_factor,
                 "min_lr": min_lr,
                 "augmentation": json.dumps(aug_config),
                 "cv_score": cv_score,
@@ -185,18 +217,29 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
 
 if __name__ == "__main__":
     img_aug_config = {
-        GRID_MASK: {"d1": 30, "d2": 75, "ratio": 0.5, "rotate": 360},
-        MIXUP: {"alpha": 0.2}
+        AFFINE: {
+            "scale": {"x": (0.9, 1.1), "y": (0.9, 1.1)},
+            "translate_percent": {"x": (-0.15, 0.15), "y": (-0.15, 0.15)},
+            "rotate": (-25, 25),
+            "shear": (-8, 8)
+        },
+        GRID_MASK: {"d1": 30, "d2": 75, "ratio": 0.7, "rotate": 360},
+        MIXUP: {"alpha": 0.2},
+        # RANDOM_CUTOUT: {"p": 1.0, "s_h": 0.3, "v_h": 0, "r_1": 0.4, "r_2": 1 / 0.4},
+        # AUGMIX: {"augmentation_list": augmentations.augmentations_subset}
     }
 
     train_tf(
-        image_size=64,
-        batch_size=256,
-        lr=0.001,
-        epoch=30,
+        image_size=128,
+        batch_size=64,
+        lr=0.0001,
+        epoch=1,
         min_lr=0.000001,
         save_model=True,
         logging=True,
         save_result_to_csv=True,
-        aug_config=img_aug_config
+        aug_config=img_aug_config,
+        lr_reduce_patience=5,
+        lr_reduce_factor=0.75,
+        create_model=dense_net_121_model
     )
