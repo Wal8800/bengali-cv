@@ -35,7 +35,8 @@ def read_image(file_path: str) -> np.ndarray:
 
 
 class BengaliImageGenerator(Sequence):
-    def __init__(self, file_paths, image_size, root, vowel, consonant, batch_size=64, shuffle=False):
+    def __init__(self, file_paths, image_size, root, vowel, consonant, batch_size=64, shuffle=False,
+                 three_channel=False):
         """Initialization
         :param file_paths: list of all 'label' ids to use in the generato
         """
@@ -46,6 +47,7 @@ class BengaliImageGenerator(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self.image_size = image_size
+        self.three_channel = three_channel
 
     def __len__(self):
         """Denotes the number of batches per epoch
@@ -61,7 +63,7 @@ class BengaliImageGenerator(Sequence):
 
         x_batch = self.file_paths[index * self.batch_size:(index + 1) * self.batch_size]
         images = [read_image(p) for p in x_batch]
-        result = np.array(images).reshape((-1, self.image_size, self.image_size, 1))
+        images = np.array(images).reshape((-1, self.image_size, self.image_size, 1))
 
         root_batch = self.root[index * self.batch_size:(index + 1) * self.batch_size]
         vowel_batch = self.vowel[index * self.batch_size:(index + 1) * self.batch_size]
@@ -73,7 +75,10 @@ class BengaliImageGenerator(Sequence):
             'consonant': consonant_batch
         }
 
-        return result, y_dict
+        if self.three_channel:
+            images = np.concatenate((images,) * 3, axis=-1)
+
+        return images, y_dict
 
     def on_epoch_end(self):
         """Updates indexes after each epoch
@@ -88,11 +93,11 @@ class BengaliImageGenerator(Sequence):
 
 class BengaliImageMixUpGenerator(BengaliImageGenerator):
     def __init__(self, file_paths, image_size, root=None, vowel=None, consonant=None, batch_size=64, shuffle=False,
-                 alpha=0.2, mixup=True, transformers=None):
+                 alpha=0.2, mixup=True, transformers=None, three_channel=False):
         """Initialization
         :param file_paths: list of all 'label' ids to use in the generato
         """
-        super().__init__(file_paths, image_size, root, vowel, consonant, batch_size, shuffle)
+        super().__init__(file_paths, image_size, root, vowel, consonant, batch_size, shuffle, three_channel)
         if transformers is None:
             transformers = []
         self.alpha = alpha
@@ -105,7 +110,20 @@ class BengaliImageMixUpGenerator(BengaliImageGenerator):
         :return: X and y when fitting. X only when predicting
         """
 
-        images, y_dict = super().__getitem__(index)
+        # images, y_dict = super().__getitem__(index)
+        x_batch = self.file_paths[index * self.batch_size:(index + 1) * self.batch_size]
+        images = [read_image(p) for p in x_batch]
+        images = np.array(images).reshape((-1, self.image_size, self.image_size, 1))
+
+        root_batch = self.root[index * self.batch_size:(index + 1) * self.batch_size]
+        vowel_batch = self.vowel[index * self.batch_size:(index + 1) * self.batch_size]
+        consonant_batch = self.consonant[index * self.batch_size:(index + 1) * self.batch_size]
+
+        y_dict = {
+            'root': root_batch,
+            'vowel': vowel_batch,
+            'consonant': consonant_batch
+        }
 
         if not self.mixup:
             for i in range(len(images)):
@@ -117,6 +135,9 @@ class BengaliImageMixUpGenerator(BengaliImageGenerator):
 
                 img = img.reshape((self.image_size, self.image_size, 1))
                 images[i] = img
+
+            if self.three_channel:
+                images = np.concatenate((images,) * 3, axis=-1)
             return images, y_dict
 
         current_batch_size = len(images)
@@ -140,6 +161,9 @@ class BengaliImageMixUpGenerator(BengaliImageGenerator):
 
             img = img.reshape((self.image_size, self.image_size, 1))
             result_images[i] = img
+
+        if self.three_channel:
+            result_images = np.concatenate((result_images,) * 3, axis=-1)
 
         root_batch_2 = self.root[random_index]
         vowel_batch_2 = self.vowel[random_index]
@@ -202,7 +226,11 @@ def test_train_generator(gen: Sequence):
         if i == 0:
             # print(img)
             print(np.max(img), np.min(img))
-        axs[i].imshow(img.reshape(gen.image_size, gen.image_size))
+
+        if len(img.shape) == 3:
+            axs[i].imshow(img.reshape(gen.image_size, gen.image_size, 3))
+        else:
+            axs[i].imshow(img.reshape(gen.image_size, gen.image_size))
         axs[i].set_title('Original image')
         axs[i].axis('off')
         i += 1
@@ -234,7 +262,17 @@ def test_generator():
             lambda x: grid_mask(x, d1=30, d2=40, ratio=0.6, rotate=1),
             # lambda x: get_random_eraser(p=1.0, s_h=0.3, v_h=0, r_1=0.4, r_2=1 / 0.4)(x)
         ],
-        mixup=False
+        mixup=False,
+        three_channel=True
+    )
+
+    img_generator = BengaliImageGenerator(
+        image_x,
+        current_image_size,
+        root=y_root,
+        vowel=y_vowel,
+        consonant=y_consonant,
+        three_channel=True
     )
     test_train_generator(img_generator)
 

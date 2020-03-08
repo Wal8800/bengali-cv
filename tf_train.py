@@ -31,7 +31,7 @@ class OnEpochEnd(tf.keras.callbacks.Callback):
 
 def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, logging=True, save_model=True,
              save_result_to_csv=True, lr_reduce_patience=5, lr_reduce_factor=0.7, n_fold=5, aug_config=None,
-             create_model=dense_net_121_model):
+             create_model=dense_net_121_model, three_channel=False):
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         try:
@@ -125,6 +125,8 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
         con_test_percentage = [(i, c[i] / len(con_truth) * 100.0) for i, count in c.most_common()]
         print(f"test con percentage: {con_test_percentage}")
 
+        input_shape = (image_size, image_size, 3) if three_channel else (image_size, image_size, 3)
+
         train_gen = BengaliImageMixUpGenerator(
             x_train,
             image_size,
@@ -134,7 +136,8 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
             batch_size=batch_size,
             mixup=MIXUP in aug_config,
             alpha=aug_config[MIXUP]["alpha"] if MIXUP in aug_config else 0.2,
-            transformers=transformers
+            transformers=transformers,
+            three_channel=three_channel
         )
 
         test_gen = BengaliImageGenerator(
@@ -143,10 +146,11 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
             root=y_test_root,
             vowel=y_test_vowel,
             consonant=y_test_consonant,
-            batch_size=batch_size
+            batch_size=batch_size,
+            three_channel=three_channel
         )
 
-        model = create_model(image_size)
+        model = create_model(input_shape)
         optimizer = Adam(learning_rate=lr)
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
@@ -235,11 +239,12 @@ if __name__ == "__main__":
         lr=0.0001,
         epoch=1,
         min_lr=0.000001,
-        save_model=True,
-        logging=True,
-        save_result_to_csv=True,
+        save_model=False,
+        logging=False,
+        save_result_to_csv=False,
         aug_config=img_aug_config,
         lr_reduce_patience=5,
         lr_reduce_factor=0.75,
-        create_model=dense_net_121_model
+        create_model=dense_net_121_model,
+        three_channel=True
     )

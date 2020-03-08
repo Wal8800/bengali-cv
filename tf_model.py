@@ -5,7 +5,7 @@ from tensorflow.keras.applications.densenet import DenseNet121, DenseNet169
 from tensorflow.keras.layers import Input, Dropout, Dense, BatchNormalization, Activation
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import get_custom_objects
-from tensorflow_core.python.keras.layers import GlobalAveragePooling2D
+from tensorflow_core.python.keras.layers import GlobalAveragePooling2D, Conv2D
 
 
 # https://github.com/digantamisra98/Mish/blame/master/Mish/TFKeras/mish.py
@@ -35,6 +35,14 @@ def mish(inputs):
 get_custom_objects().update({'Mish': Mish(mish)})
 
 
+class MishActivations(layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, x):
+        return x * tf.math.tanh(tf.math.softplus(x))
+
+
 class GeneralizedMeanPool2D(layers.Layer):
     def __init__(self, name, **kwargs):
         super().__init__(**kwargs)
@@ -48,16 +56,22 @@ class GeneralizedMeanPool2D(layers.Layer):
                 1. / self.gm_exp)
 
 
+def conv_block(x):
+    x = Conv2D(filters=512, kernel_size=(3, 3), padding='same', activation='relu')(x)
+
+    return x
+
+
 def tail_block(x, name):
-    # x = Activation('Mish')(x)
-    # x = Conv2D(filters=512, kernel_size=(3, 3), padding='same', activation='relu')(x)
+    # x = MishActivations()(x)
+    # # x = Activation("relu")(x)
+    # x = Conv2D(filters=256, kernel_size=(3, 3), padding='same')(x)
     # x = BatchNormalization()(x)
 
     return GeneralizedMeanPool2D(name)(x)
 
 
-def dense_net_121_model(size) -> Model:
-    input_shape = (size, size, 1)
+def dense_net_121_model(input_shape) -> Model:
     inputs = Input(shape=input_shape)
 
     base_model = DenseNet121(
@@ -66,7 +80,7 @@ def dense_net_121_model(size) -> Model:
         input_tensor=inputs,
         input_shape=input_shape
     )
-    
+
     a = tail_block(base_model.output, "root")
     b = tail_block(base_model.output, "vowel")
     c = tail_block(base_model.output, "consonant")
@@ -106,8 +120,7 @@ def dense_net_169_model(size) -> Model:
     return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
 
 
-def efficient_net_b3(size) -> Model:
-    input_shape = (size, size, 1)
+def efficient_net_b3(input_shape) -> Model:
     inputs = Input(shape=input_shape)
 
     base_model = efn.EfficientNetB3(weights=None, include_top=False, input_tensor=inputs, pooling=None, classes=None)
@@ -124,5 +137,5 @@ def efficient_net_b3(size) -> Model:
 
 
 if __name__ == "__main__":
-    example_model = efficient_net_b3(128)
+    example_model = dense_net_121_model((128, 128, 3))
     example_model.summary()
