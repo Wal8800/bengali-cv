@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 HEIGHT = 137
 WIDTH = 236
-SIZE = 128
+SIZE = 224
 
 
 # Taken: https://www.kaggle.com/iafoss/image-preprocessing-128x128
@@ -53,11 +53,10 @@ def process_and_output():
             name = df.iloc[idx, 0]
             # normalize each image by its max val
             img = (data[idx] * (255.0 / data[idx].max())).astype(np.uint8)
-            img = cv2.resize(img, (SIZE, SIZE))
-            # img = crop_resize(img)
+            img = crop_resize(img)
 
             # img = cv2.imencode('.png', img)[1]
-            cv2.imwrite(f"data/image_128_plain/{name}.png", img)
+            cv2.imwrite(f"data/image_{SIZE}/{name}.png", img)
 
 
 # https://www.kaggle.com/c/bengaliai-cv19/overview/evaluation
