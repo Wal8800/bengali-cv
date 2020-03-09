@@ -2,10 +2,10 @@ import efficientnet.tfkeras as efn
 import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras.applications.densenet import DenseNet121, DenseNet169
-from tensorflow.keras.layers import Input, Dropout, Dense, BatchNormalization, Activation
+from tensorflow.keras.layers import Input, Dropout, Dense, Activation
 from tensorflow.keras.models import Model
 from tensorflow.keras.utils import get_custom_objects
-from tensorflow_core.python.keras.layers import GlobalAveragePooling2D, Conv2D
+from tensorflow_core.python.keras.layers import Conv2D
 
 
 # https://github.com/digantamisra98/Mish/blame/master/Mish/TFKeras/mish.py
@@ -92,8 +92,7 @@ def dense_net_121_model(input_shape) -> Model:
     return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
 
 
-def dense_net_169_model(size) -> Model:
-    input_shape = (size, size, 1)
+def dense_net_169(input_shape) -> Model:
     inputs = Input(shape=input_shape)
 
     base_model = DenseNet169(
@@ -102,28 +101,6 @@ def dense_net_169_model(size) -> Model:
         input_tensor=inputs,
         input_shape=input_shape
     )
-
-    x = GlobalAveragePooling2D()(base_model.output)
-    # x = Dense(2048, activation='relu')(x)
-    # x = Dropout(rate=0.3)(x)
-    x = Dense(1024, activation='relu')(x)
-    x = Dropout(rate=0.3)(x)
-    x = Dense(512, activation='relu')(x)
-    x = Dropout(rate=0.3)(x)
-    x = Dense(256, activation='relu')(x)
-    x = BatchNormalization()(x)
-
-    head_root = Dense(168, activation='softmax', name='root')(x)
-    head_vowel = Dense(11, activation='softmax', name='vowel')(x)
-    head_consonant = Dense(7, activation='softmax', name='consonant')(x)
-
-    return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
-
-
-def efficient_net_b3(input_shape) -> Model:
-    inputs = Input(shape=input_shape)
-
-    base_model = efn.EfficientNetB3(weights=None, include_top=False, input_tensor=inputs, pooling=None, classes=None)
 
     a = tail_block(base_model.output, "root")
     b = tail_block(base_model.output, "vowel")
@@ -136,6 +113,30 @@ def efficient_net_b3(input_shape) -> Model:
     return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
 
 
+def efficient_net_b3(input_shape) -> Model:
+    inputs = Input(shape=input_shape)
+
+    base_model = efn.EfficientNetB0(weights=None, include_top=False, input_tensor=inputs, pooling=None,
+                                    classes=None)
+    for layer in base_model.layers:
+        layer.trainable = True
+
+    # a = tail_block(base_model.output, "root")
+    # b = tail_block(base_model.output, "vowel")
+    # c = tail_block(base_model.output, "consonant")
+
+    x = GeneralizedMeanPool2D('gem')(base_model.output)
+    x = Dropout(0.1)(x)
+    x = Dense(512, activation='elu')(x)
+    x = Dropout(0.1)(x)
+
+    head_root = Dense(168, activation='softmax', name='root')(x)
+    head_vowel = Dense(11, activation='softmax', name='vowel')(x)
+    head_consonant = Dense(7, activation='softmax', name='consonant')(x)
+
+    return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
+
+
 if __name__ == "__main__":
-    example_model = dense_net_121_model((128, 128, 3))
+    example_model = dense_net_169((128, 128, 3))
     example_model.summary()

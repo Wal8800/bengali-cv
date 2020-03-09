@@ -3,7 +3,7 @@ from collections import Counter
 from csv import DictWriter
 from datetime import datetime
 
-from sklearn.metrics import classification_report, recall_score
+from sklearn.metrics import recall_score
 from sklearn.model_selection import StratifiedKFold
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.optimizers import Adam
@@ -185,13 +185,13 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
 
         root_prediction = np.argmax(prediction[0], axis=1)
         scores.append(recall_score(root_prediction, root_truth, average='macro'))
-        print(classification_report(root_truth, root_prediction))
+        # print(classification_report(root_truth, root_prediction))
         vowel_pred = np.argmax(prediction[1], axis=1)
         scores.append(recall_score(vowel_pred, vowel_truth, average='macro'))
-        print(classification_report(vowel_truth, vowel_pred))
+        # print(classification_report(vowel_truth, vowel_pred))
         con_pred = np.argmax(prediction[2], axis=1)
         scores.append(recall_score(con_pred, con_truth, average='macro'))
-        print(classification_report(con_truth, con_pred))
+        # print(classification_report(con_truth, con_pred))
 
         cv_score = np.average(scores, weights=[2, 1, 1])
         print(cv_score)
@@ -237,7 +237,7 @@ if __name__ == "__main__":
         image_size=128,
         batch_size=64,
         lr=0.0001,
-        epoch=1,
+        epoch=80,
         min_lr=0.000001,
         save_model=False,
         logging=False,
@@ -245,6 +245,6 @@ if __name__ == "__main__":
         aug_config=img_aug_config,
         lr_reduce_patience=5,
         lr_reduce_factor=0.75,
-        create_model=dense_net_121_model,
+        create_model=dense_net_169,
         three_channel=True
     )
