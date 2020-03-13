@@ -15,6 +15,7 @@ matplotlib = "*"
 imgaug = "*"
 pyarrow = "*"
 efficientnet = "*"
+keras = "*"
 
 [requires]
 python_version = "3.7"

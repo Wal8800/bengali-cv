@@ -5,9 +5,9 @@ from datetime import datetime
 
 from sklearn.metrics import recall_score
 from sklearn.model_selection import StratifiedKFold
+from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.optimizers import Adam
-from tensorflow_core.python.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint
 
 from random_eraser import get_random_eraser
 from tf_model import *
@@ -184,13 +184,13 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
         scores = []
 
         root_prediction = np.argmax(prediction[0], axis=1)
-        scores.append(recall_score(root_prediction, root_truth, average='macro'))
+        scores.append(recall_score(root_truth, root_prediction, average='macro'))
         # print(classification_report(root_truth, root_prediction))
         vowel_pred = np.argmax(prediction[1], axis=1)
-        scores.append(recall_score(vowel_pred, vowel_truth, average='macro'))
+        scores.append(recall_score(vowel_truth, vowel_pred, average='macro'))
         # print(classification_report(vowel_truth, vowel_pred))
         con_pred = np.argmax(prediction[2], axis=1)
-        scores.append(recall_score(con_pred, con_truth, average='macro'))
+        scores.append(recall_score(con_truth, con_pred, average='macro'))
         # print(classification_report(con_truth, con_pred))
 
         cv_score = np.average(scores, weights=[2, 1, 1])
@@ -234,17 +234,17 @@ if __name__ == "__main__":
     }
 
     train_tf(
-        image_size=128,
-        batch_size=64,
+        image_size=224,
+        batch_size=40,
         lr=0.0001,
         epoch=80,
-        min_lr=0.000001,
-        save_model=False,
-        logging=False,
-        save_result_to_csv=False,
+        min_lr=0.00001,
+        save_model=True,
+        logging=True,
+        save_result_to_csv=True,
         aug_config=img_aug_config,
         lr_reduce_patience=5,
         lr_reduce_factor=0.75,
-        create_model=dense_net_169,
+        create_model=dense_net_121_model,
         three_channel=True
     )

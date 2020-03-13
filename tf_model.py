@@ -1,46 +1,28 @@
 import efficientnet.tfkeras as efn
 import tensorflow as tf
+
+from tensorflow.keras import backend as K
 from tensorflow.keras import layers
 from tensorflow.keras.applications.densenet import DenseNet121, DenseNet169
-from tensorflow.keras.layers import Input, Dropout, Dense, Activation
+from tensorflow.keras.layers import Input, Dropout, Dense, Layer, BatchNormalization, Conv2D
 from tensorflow.keras.models import Model
-from tensorflow.keras.utils import get_custom_objects
-from tensorflow_core.python.keras.layers import Conv2D
 
 
-# https://github.com/digantamisra98/Mish/blame/master/Mish/TFKeras/mish.py
-class Mish(Activation):
-    '''
-    Mish Activation Function.
-    .. math::
-        mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + e^{x}))
-    Shape:
-        - Input: Arbitrary. Use the keyword argument `input_shape`
-        (tuple of integers, does not include the samples axis)
-        when using this layer as the first layer in a model.
-        - Output: Same shape as the input.
-    Examples:
-        >>> X = Activation('Mish', name="conv1_act")(X_input)
-    '''
-
-    def __init__(self, activation, **kwargs):
-        super(Mish, self).__init__(activation, **kwargs)
-        self.__name__ = 'Mish'
-
-
-def mish(inputs):
-    return inputs * tf.math.tanh(tf.math.softplus(inputs))
-
-
-get_custom_objects().update({'Mish': Mish(mish)})
-
-
-class MishActivations(layers.Layer):
+# https: // gist.github.com / digantamisra98 / 35ca0ec94ebefb99af6f444922fa52cd
+class Mish(Layer):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super(Mish, self).__init__(**kwargs)
+        self.supports_masking = True
 
-    def call(self, x):
-        return x * tf.math.tanh(tf.math.softplus(x))
+    def call(self, inputs):
+        return inputs * K.tanh(K.softplus(inputs))
+
+    def get_config(self):
+        config = super(Mish, self).get_config()
+        return config
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 
 class GeneralizedMeanPool2D(layers.Layer):
@@ -56,9 +38,11 @@ class GeneralizedMeanPool2D(layers.Layer):
                 1. / self.gm_exp)
 
 
-def conv_block(x):
-    x = Conv2D(filters=512, kernel_size=(3, 3), padding='same', activation='relu')(x)
-
+def experiment_tail_block(x, name):
+    # x = Mish()(x)
+    x = Conv2D(filters=256, kernel_size=(3, 3), padding='same')(x)
+    x = BatchNormalization()(x)
+    x = GeneralizedMeanPool2D(name)(x)
     return x
 
 
@@ -68,7 +52,11 @@ def tail_block(x, name):
     # x = Conv2D(filters=256, kernel_size=(3, 3), padding='same')(x)
     # x = BatchNormalization()(x)
 
-    return GeneralizedMeanPool2D(name)(x)
+    x = GeneralizedMeanPool2D(name)(x)
+    # x = Dense(1024, activation='relu')(x)
+    # x = Dropout(0.3)(x)
+
+    return x
 
 
 def dense_net_121_model(input_shape) -> Model:
@@ -78,7 +66,8 @@ def dense_net_121_model(input_shape) -> Model:
         include_top=False,
         weights=None,
         input_tensor=inputs,
-        input_shape=input_shape
+        input_shape=input_shape,
+        pooling=None
     )
 
     a = tail_block(base_model.output, "root")
@@ -116,7 +105,7 @@ def dense_net_169(input_shape) -> Model:
 def efficient_net_b3(input_shape) -> Model:
     inputs = Input(shape=input_shape)
 
-    base_model = efn.EfficientNetB0(weights=None, include_top=False, input_tensor=inputs, pooling=None,
+    base_model = efn.EfficientNetB2(weights=None, include_top=False, input_tensor=inputs, pooling=None,
                                     classes=None)
     for layer in base_model.layers:
         layer.trainable = True
@@ -138,5 +127,5 @@ def efficient_net_b3(input_shape) -> Model:
 
 
 if __name__ == "__main__":
-    example_model = dense_net_169((128, 128, 3))
+    example_model = dense_net_121_model((128, 128, 3))
     example_model.summary()
