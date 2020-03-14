@@ -1,0 +1,1 @@
+Data folder consists of raw and processed data
