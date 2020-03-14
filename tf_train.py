@@ -237,8 +237,8 @@ if __name__ == "__main__":
 
     train_tf(
         image_size=224,
-        batch_size=40,
-        lr=0.0001,
+        batch_size=32,
+        lr=0.001,
         epoch=80,
         min_lr=0.00001,
         save_model=True,
@@ -246,7 +246,7 @@ if __name__ == "__main__":
         save_result_to_csv=True,
         aug_config=img_aug_config,
         lr_reduce_patience=5,
-        lr_reduce_factor=0.75,
-        create_model=dense_net_121_model,
+        lr_reduce_factor=0.5,
+        create_model=dense_net_169,
         three_channel=True
     )

@@ -4,7 +4,7 @@ import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras import layers
 from tensorflow.keras.applications.densenet import DenseNet121, DenseNet169
-from tensorflow.keras.layers import Input, Dropout, Dense, Layer, BatchNormalization, Conv2D
+from tensorflow.keras.layers import Input, Dense, Layer, BatchNormalization, Conv2D
 from tensorflow.keras.models import Model
 
 
@@ -115,17 +115,18 @@ def efficient_net_b3(input_shape) -> Model:
     # c = tail_block(base_model.output, "consonant")
 
     x = GeneralizedMeanPool2D('gem')(base_model.output)
-    x = Dropout(0.1)(x)
-    x = Dense(512, activation='elu')(x)
-    x = Dropout(0.1)(x)
 
-    head_root = Dense(168, activation='softmax', name='root')(x)
-    head_vowel = Dense(11, activation='softmax', name='vowel')(x)
-    head_consonant = Dense(7, activation='softmax', name='consonant')(x)
+    a = Dense(512)(x)
+    b = Dense(512)(x)
+    c = Dense(512)(x)
+
+    head_root = Dense(168, activation='softmax', name='root')(a)
+    head_vowel = Dense(11, activation='softmax', name='vowel')(b)
+    head_consonant = Dense(7, activation='softmax', name='consonant')(c)
 
     return Model(inputs=inputs, outputs=[head_root, head_vowel, head_consonant])
 
 
 if __name__ == "__main__":
-    example_model = dense_net_121_model((128, 128, 3))
+    example_model = efficient_net_b3((224, 224, 3))
     example_model.summary()
