@@ -7,3 +7,4 @@ __pycache__
 /inputs/
 /input/
 /train_result.csv
+kaggle.json

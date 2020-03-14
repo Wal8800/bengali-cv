@@ -16,6 +16,7 @@ imgaug = "*"
 pyarrow = "*"
 efficientnet = "*"
 keras = "*"
+kaggle = "*"
 
 [requires]
 python_version = "3.7"
