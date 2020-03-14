@@ -2,6 +2,7 @@ import json
 from collections import Counter
 from csv import DictWriter
 from datetime import datetime
+from pathlib import Path
 
 from sklearn.metrics import recall_score
 from sklearn.model_selection import StratifiedKFold
@@ -171,6 +172,7 @@ def train_tf(image_size=64, batch_size=128, lr=0.001, min_lr=0.00001, epoch=30, 
             callbacks.append(TensorBoard(log_dir=logdir))
 
         if save_model:
+            Path(f"model/{create_model.__name__}").mkdir(parents=True, exist_ok=True)
             callbacks.append(
                 ModelCheckpoint(f"model/{create_model.__name__}/tf_model_{image_size}_{'_'.join(aug_keys)}.h5",
                                 monitor='val_root_accuracy',

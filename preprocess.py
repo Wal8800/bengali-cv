@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
 import pandas as pd
@@ -46,6 +48,8 @@ def process_and_output():
         'data/train_image_data_3.parquet',
     ]
 
+    Path(f"data/image_{SIZE}").mkdir(parents=True, exist_ok=True)
+
     for file_path in trains:
         df = pd.read_parquet(file_path)
         data = 255 - df.iloc[:, 1:].values.reshape(-1, HEIGHT, WIDTH).astype(np.uint8)
@@ -55,7 +59,6 @@ def process_and_output():
             img = (data[idx] * (255.0 / data[idx].max())).astype(np.uint8)
             img = crop_resize(img)
 
-            # img = cv2.imencode('.png', img)[1]
             cv2.imwrite(f"data/image_{SIZE}/{name}.png", img)
 
 
