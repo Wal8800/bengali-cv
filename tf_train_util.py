@@ -29,7 +29,7 @@ seq = iaa.Sequential([
 def read_image(file_path: str) -> np.ndarray:
     img = cv2.imread(file_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img = img / 255
+    img = img / 255.0
 
     return img
 
